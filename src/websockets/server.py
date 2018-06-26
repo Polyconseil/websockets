@@ -117,30 +117,30 @@ class WebSocketServerProtocol(WebSocketCommonProtocol):
                     extra_headers=self.extra_headers,
                 )
             except ConnectionError:
-                logger.debug("Connection error in opening handshake", exc_info=True)
+                self.debug("Connection error in opening handshake", exc_info=True)
                 raise
             except Exception as exc:
                 if isinstance(exc, AbortHandshake):
                     status, headers, body = exc.status, exc.headers, exc.body
                 elif isinstance(exc, InvalidOrigin):
-                    logger.debug("Invalid origin", exc_info=True)
+                    self.debug("Invalid origin", exc_info=True)
                     status, headers, body = FORBIDDEN, [], (str(exc) + "\n").encode()
                 elif isinstance(exc, InvalidUpgrade):
-                    logger.debug("Invalid upgrade", exc_info=True)
+                    self.debug("Invalid upgrade", exc_info=True)
                     status, headers, body = (
                         UPGRADE_REQUIRED,
                         [('Upgrade', 'websocket')],
                         (str(exc) + "\n").encode(),
                     )
                 elif isinstance(exc, InvalidHandshake):
-                    logger.debug("Invalid handshake", exc_info=True)
+                    self.debug("Invalid handshake", exc_info=True)
                     status, headers, body = (
                         BAD_REQUEST,
                         [],
                         (str(exc) + "\n").encode(),
                     )
                 else:
-                    logger.warning("Error in opening handshake", exc_info=True)
+                    self.warning("Error in opening handshake", exc_info=True)
                     status, headers, body = (
                         INTERNAL_SERVER_ERROR,
                         [],
@@ -164,7 +164,7 @@ class WebSocketServerProtocol(WebSocketCommonProtocol):
             try:
                 yield from self.ws_handler(self, path)
             except Exception:
-                logger.error("Error in connection handler", exc_info=True)
+                self.error("Error in connection handler", exc_info=True)
                 if not self.closed:
                     self.fail_connection(1011)
                 raise
@@ -172,10 +172,10 @@ class WebSocketServerProtocol(WebSocketCommonProtocol):
             try:
                 yield from self.close()
             except ConnectionError:
-                logger.debug("Connection error in closing handshake", exc_info=True)
+                self.debug("Connection error in closing handshake", exc_info=True)
                 raise
             except Exception:
-                logger.warning("Error in closing handshake", exc_info=True)
+                self.warning("Error in closing handshake", exc_info=True)
                 raise
 
         except Exception:
@@ -210,8 +210,8 @@ class WebSocketServerProtocol(WebSocketCommonProtocol):
         except ValueError as exc:
             raise InvalidMessage("Malformed HTTP message") from exc
 
-        logger.debug("%s < GET %s HTTP/1.1", self.side, path)
-        logger.debug("%s < %r", self.side, headers)
+        self.debug("%s < GET %s HTTP/1.1", self.side, path)
+        self.debug("%s < %r", self.side, headers)
 
         self.path = path
         self.request_headers = headers
@@ -227,8 +227,8 @@ class WebSocketServerProtocol(WebSocketCommonProtocol):
         """
         self.response_headers = headers
 
-        logger.debug("%s > HTTP/1.1 %d %s", self.side, status.value, status.phrase)
-        logger.debug("%s > %r", self.side, headers)
+        self.debug("%s > HTTP/1.1 %d %s", self.side, status.value, status.phrase)
+        self.debug("%s > %r", self.side, headers)
 
         # Since the status line and headers only contain ASCII characters,
         # we can keep this simple.
@@ -238,7 +238,7 @@ class WebSocketServerProtocol(WebSocketCommonProtocol):
         self.writer.write(response.encode())
 
         if body is not None:
-            logger.debug("%s > Body (%d bytes)", self.side, len(body))
+            self.debug("%s > Body (%d bytes)", self.side, len(body))
             self.writer.write(body)
 
     def process_request(self, path, request_headers):
