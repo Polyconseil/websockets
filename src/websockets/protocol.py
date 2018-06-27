@@ -55,6 +55,20 @@ class State(enum.IntEnum):
 # between the check and the assignment.
 
 
+class ProtocolLoggerAdapter(logging.LoggerAdapter):
+    def __init__(self, logger, protocol):
+        super().__init__(logger, None)
+        self.protocol_id = id(protocol)
+        for attr in ('debug', 'info', 'warning', 'error', 'critical', 'exception'):
+            setattr(protocol, attr, getattr(self, attr))
+
+    def log(self, level, msg, *args, **kwargs):
+        if self.isEnabledFor(level):
+            msg = '[0x%x] ' + msg
+            args = (self.protocol_id,) + args
+            self.logger.log(level, msg, *args, **kwargs)
+
+
 class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
     """
     This class implements common parts of the WebSocket protocol.
@@ -182,6 +196,9 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
         legacy_recv=False,
         timeout=10
     ):
+        # custom logger which injects logging methods *on* the protocol instance
+        self._logger = ProtocolLoggerAdapter(logger, self)
+
         # Backwards-compatibility: close_timeout used to be called timeout.
         # If both are specified, timeout is ignored.
         if close_timeout is None:
