@@ -57,6 +57,20 @@ class State(enum.IntEnum):
     CONNECTING, OPEN, CLOSING, CLOSED = range(4)
 
 
+class ProtocolLoggerAdapter(logging.LoggerAdapter):
+    def __init__(self, logger, protocol):
+        super().__init__(logger, None)
+        self.protocol_id = id(protocol)
+        for attr in ('debug', 'info', 'warning', 'error', 'critical', 'exception'):
+            setattr(protocol, attr, getattr(self, attr))
+
+    def log(self, level, msg, *args, **kwargs):
+        if self.isEnabledFor(level):
+            msg = '[0x%x] ' + msg
+            args = (self.protocol_id,) + args
+            self.logger.log(level, msg, *args, **kwargs)
+
+
 # In order to ensure consistency, the code always checks the current value of
 # WebSocketCommonProtocol.state before assigning a new value and never yields
 # between the check and the assignment.
@@ -196,6 +210,9 @@ class WebSocketCommonProtocol(asyncio.Protocol):
         legacy_recv: bool = False,
         timeout: Optional[float] = None,
     ) -> None:
+        # custom logger which injects logging methods *on* the protocol instance
+        self._logger = ProtocolLoggerAdapter(logger, self)
+
         # Backwards compatibility: close_timeout used to be called timeout.
         if timeout is None:
             timeout = 10
