@@ -256,7 +256,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
         # Subclasses implement the opening handshake and, on success, execute
         # :meth:`connection_open` to change the state to OPEN.
         self.state = State.CONNECTING
-        logger.debug("%s - state = CONNECTING", self.side)
+        self.debug("%s - state = CONNECTING", self.side)
 
         # HTTP protocol parameters.
         self.path: str
@@ -325,7 +325,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
         # 4.1. The WebSocket Connection is Established.
         assert self.state is State.CONNECTING, "wrong state %r" % self.state
         self.state = State.OPEN
-        logger.debug("%s - state = OPEN", self.side)
+        self.debug("%s - state = OPEN", self.side)
         # Start the task that receives incoming WebSocket messages.
         self.transfer_data_task = self.loop.create_task(self.transfer_data())
         # Start the task that sends pings at regular intervals.
@@ -863,7 +863,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
             # This shouldn't happen often because exceptions expected under
             # regular circumstances are handled above. If it does, consider
             # catching and handling more exceptions.
-            logger.error("Error in data transfer", exc_info=True)
+            self.error("Error in data transfer", exc_info=True)
 
             self.transfer_data_exc = exc
             self.fail_connection(1011)
@@ -975,7 +975,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
             elif frame.opcode == OP_PING:
                 # Answer pings.
                 ping_hex = frame.data.hex() or "[empty]"
-                logger.debug(
+                self.debug(
                     "%s - received ping, sending pong: %s", self.side, ping_hex
                 )
                 await self.pong(frame.data)
@@ -983,7 +983,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
             elif frame.opcode == OP_PONG:
                 # Acknowledge pings on solicited pongs.
                 if frame.data in self.pings:
-                    logger.debug(
+                    self.debug(
                         "%s - received solicited pong: %s",
                         self.side,
                         frame.data.hex() or "[empty]",
@@ -1008,14 +1008,14 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
                             ping_id.hex() or "[empty]" for ping_id in ping_ids
                         )
                         plural = "s" if len(ping_ids) > 1 else ""
-                        logger.debug(
+                        self.debug(
                             "%s - acknowledged previous ping%s: %s",
                             self.side,
                             plural,
                             pings_hex,
                         )
                 else:
-                    logger.debug(
+                    self.debug(
                         "%s - received unsolicited pong: %s",
                         self.side,
                         frame.data.hex() or "[empty]",
@@ -1036,7 +1036,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
             max_size=max_size,
             extensions=self.extensions,
         )
-        logger.debug("%s < %r", self.side, frame)
+        self.debug("%s < %r", self.side, frame)
         return frame
 
     async def write_frame(
@@ -1049,7 +1049,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
             )
 
         frame = Frame(fin, opcode, data)
-        logger.debug("%s > %r", self.side, frame)
+        self.debug("%s > %r", self.side, frame)
         frame.write(self.writer.write, mask=self.is_client, extensions=self.extensions)
 
         try:
@@ -1079,7 +1079,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
         if self.state is State.OPEN:
             # 7.1.3. The WebSocket Closing Handshake is Started
             self.state = State.CLOSING
-            logger.debug("%s - state = CLOSING", self.side)
+            self.debug("%s - state = CLOSING", self.side)
 
             # 7.1.2. Start the WebSocket Closing Handshake
             await self.write_frame(True, OP_CLOSE, data, _expected_state=State.CLOSING)
@@ -1116,7 +1116,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
                             ping_waiter, self.ping_timeout, loop=self.loop
                         )
                     except asyncio.TimeoutError:
-                        logger.debug("%s ! timed out waiting for pong", self.side)
+                        self.debug("%s ! timed out waiting for pong", self.side)
                         self.fail_connection(1011)
                         break
 
@@ -1127,7 +1127,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
             pass
 
         except Exception:
-            logger.warning("Unexpected exception in keepalive ping task", exc_info=True)
+            self.warning("Unexpected exception in keepalive ping task", exc_info=True)
 
     async def close_connection(self) -> None:
         """
@@ -1157,16 +1157,16 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
             if self.is_client and hasattr(self, "transfer_data_task"):
                 if await self.wait_for_connection_lost():
                     return
-                logger.debug("%s ! timed out waiting for TCP close", self.side)
+                self.debug("%s ! timed out waiting for TCP close", self.side)
 
             # Half-close the TCP connection if possible (when there's no TLS).
             if self.writer.can_write_eof():
-                logger.debug("%s x half-closing TCP connection", self.side)
+                self.debug("%s x half-closing TCP connection", self.side)
                 self.writer.write_eof()
 
                 if await self.wait_for_connection_lost():
                     return
-                logger.debug("%s ! timed out waiting for TCP close", self.side)
+                self.debug("%s ! timed out waiting for TCP close", self.side)
 
         finally:
             # The try/finally ensures that the transport never remains open,
@@ -1184,15 +1184,15 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
                 return
 
             # Close the TCP connection. Buffers are flushed asynchronously.
-            logger.debug("%s x closing TCP connection", self.side)
+            self.debug("%s x closing TCP connection", self.side)
             self.writer.close()
 
             if await self.wait_for_connection_lost():
                 return
-            logger.debug("%s ! timed out waiting for TCP close", self.side)
+            self.debug("%s ! timed out waiting for TCP close", self.side)
 
             # Abort the TCP connection. Buffers are discarded.
-            logger.debug("%s x aborting TCP connection", self.side)
+            self.debug("%s x aborting TCP connection", self.side)
             # mypy thinks self.writer.transport is a BaseTransport, not a Transport.
             self.writer.transport.abort()  # type: ignore
 
@@ -1239,7 +1239,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
         (The specification describes these steps in the opposite order.)
 
         """
-        logger.debug(
+        self.debug(
             "%s ! failing %s WebSocket connection with code %d",
             self.side,
             self.state.name,
@@ -1269,10 +1269,10 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
             # and write_frame().
 
             self.state = State.CLOSING
-            logger.debug("%s - state = CLOSING", self.side)
+            self.debug("%s - state = CLOSING", self.side)
 
             frame = Frame(True, OP_CLOSE, frame_data)
-            logger.debug("%s > %r", self.side, frame)
+            self.debug("%s > %r", self.side, frame)
             frame.write(
                 self.writer.write, mask=self.is_client, extensions=self.extensions
             )
@@ -1302,7 +1302,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
         if self.pings:
             pings_hex = ", ".join(ping_id.hex() or "[empty]" for ping_id in self.pings)
             plural = "s" if len(self.pings) > 1 else ""
-            logger.debug(
+            self.debug(
                 "%s - aborted pending ping%s: %s", self.side, plural, pings_hex
             )
 
@@ -1322,7 +1322,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
         which means it's the best point for configuring it.
 
         """
-        logger.debug("%s - event = connection_made(%s)", self.side, transport)
+        self.debug("%s - event = connection_made(%s)", self.side, transport)
         # mypy thinks transport is a BaseTransport, not a Transport.
         transport.set_write_buffer_limits(self.write_limit)  # type: ignore
         super().connection_made(transport)
@@ -1350,7 +1350,7 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
         As a consequence we revert to the previous, more useful behavior.
 
         """
-        logger.debug("%s - event = eof_received()", self.side)
+        self.debug("%s - event = eof_received()", self.side)
         super().eof_received()
         return False
 
@@ -1359,14 +1359,14 @@ class WebSocketCommonProtocol(asyncio.StreamReaderProtocol):
         7.1.4. The WebSocket Connection is Closed.
 
         """
-        logger.debug("%s - event = connection_lost(%s)", self.side, exc)
+        self.debug("%s - event = connection_lost(%s)", self.side, exc)
         self.state = State.CLOSED
-        logger.debug("%s - state = CLOSED", self.side)
+        self.debug("%s - state = CLOSED", self.side)
         if not hasattr(self, "close_code"):
             self.close_code = 1006
         if not hasattr(self, "close_reason"):
             self.close_reason = ""
-        logger.debug(
+        self.debug(
             "%s x code = %d, reason = %s",
             self.side,
             self.close_code,
